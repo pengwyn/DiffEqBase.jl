@@ -654,6 +654,21 @@ function find_callback_time(integrator,callback::ContinuousCallback,counter)
   new_t,prev_sign,event_occurred,event_idx
 end
 
+function nudge_t(zero_func, bottom_t, top_t, tdir)
+    sign_top = sign(zero_func(top_t))
+    diff_t = tdir * 2eps(bottom_t)
+    new_bottom_t = bottom_t + diff_t
+    iter = 1
+    # This check should match the same check in bisection
+    while sign(zero_func(new_bottom_t)) * sign_top >= zero(sign_top) && iter < 12
+        diff_t *= 5
+        new_bottom_t = bottom_t + diff_t
+        iter += 1
+    end
+    iter == 12 && error("Double callback crossing floating pointer reducer errored. Report this issue.")
+    return new_bottom_t
+end
+    
 function find_callback_time(integrator,callback::VectorContinuousCallback,counter)
   event_occurred,interp_index,ts,prev_sign,prev_sign_index,event_idx = determine_event_occurance(integrator,callback,counter)
   if event_occurred
@@ -684,17 +699,7 @@ function find_callback_time(integrator,callback::VectorContinuousCallback,counte
               # Determined that there is an event by derivative
               # But floating point error may make the end point negative
 
-              sign_top = sign(zero_func(top_t))
-              diff_t = integrator.tdir * 2eps(bottom_t)
-              bottom_t += diff_t
-              iter = 1
-              # This check should match the same check in bisection
-              while sign(zero_func(bottom_t)) * sign_top >= zero(sign_top) && iter < 12
-                diff_t *= 5
-                bottom_t = integrator.tprev + diff_t
-                iter += 1
-              end
-              iter == 12 && error("Double callback crossing floating pointer reducer errored. Report this issue.")
+              bottom_t = nudge_t(zero_func, bottom_t, top_t, integrator.tdir)
             end
             Θ = bisection(zero_func, (bottom_t,top_t), isone(integrator.tdir), callback.t_abstol, callback.t_reltol, callback.f_abstol, callback.f_reltol)
             if integrator.tdir * Θ < integrator.tdir * min_t
