@@ -531,7 +531,11 @@ end
 # then either f(nextfloat(r)) == 0 or f(nextfloat(r)) * f(r) < 0
 function bisection(f, tup, t_forward::Bool, t_abstol, t_reltol, f_abstol, f_reltol; maxiters=1000)
   x0, x1 = tup
-  fx0x1 = f(x0) * f(x1)
+  fx0 = f(x0)
+  # THIS IS WRONG - it won't work if the derivative is in the wrong direction.
+  iszero(fx0) && return x0 # This is option C
+  fx1 = f(x1)
+  fx0x1 = fx0 * fx1
   fzero = zero(fx0x1)
   (fx0x1 >= fzero) && error("Non bracketing interval passed in bisection method. Please report the error in DiffEqBase.")
   prevfloat_tdir(t) = t_forward ? prevfloat(t) : nextfloat(t)
@@ -544,7 +548,7 @@ function bisection(f, tup, t_forward::Bool, t_abstol, t_reltol, f_abstol, f_relt
   while true
     iter += 1
     iter == maxiters && error("Maxiters exceeded in bisection. Please report the error in DiffEqBase")
-    f(left) * f(right) >= fzero && error("Unexpected values in bisection. Please report the error in DiffEqBase.")
+    f(left) * f(right) > fzero && error("Unexpected values in bisection. Please report the error in DiffEqBase.")
     mid = (left + right) / 2
     y = f(mid)
     if zero_check(y, left, right)
@@ -566,17 +570,25 @@ function bisection(f, tup, t_forward::Bool, t_abstol, t_reltol, f_abstol, f_relt
       end
     end
     (left == mid || right == mid) && return left
-    if sign(y) == sign(f(left))
-      left = mid
-    else
+    # Because left can start off zero, need to use right for the comparisons.
+    if sign(y) == sign(f(right))
       right = mid
+    else
+      left = mid
     end
   end
 end
 
+# Need to write this up properly later.
+
+# For now: 3 scenarios:
+# A) clear sign change
+# B) Previous step had a callback and previous cond ≈ 0 (could be -ve or +ve). Process: nudge t until cond away from zero, which assigns a unique sign.
+# C) No previous callback and condition is exactly 0 at beginning. Use final sign to predict direction (assume prev sign is opposite to final sign).
+
 ## Different definition for GPUs
 function findall_events(affect!,affect_neg!,prev_sign,next_sign)
-  findall(x-> ((prev_sign[x] < 0 && affect! !== nothing) || (prev_sign[x] > 0 && affect_neg! !== nothing)) && prev_sign[x]*next_sign[x]<=0, keys(prev_sign))
+  findall(x-> ((prev_sign[x] <= 0 && affect! !== nothing) || (prev_sign[x] >= 0 && affect_neg! !== nothing)) && prev_sign[x]*next_sign[x]<=0 && next_sign[x] != 0, keys(prev_sign))
 end
 
 function find_callback_time(integrator,callback::ContinuousCallback,counter)
@@ -711,13 +723,20 @@ function find_callback_time(integrator,callback::VectorContinuousCallback,counte
         new_t = integrator.dt
         min_event_idx = event_idx[1]
       end
+
+      return_sign = ArrayInterface.allowed_getindex(prev_sign,min_event_idx)
+      # Handle edge cases - already know by this point that the right direction has been identified.
+      if return_sign == 0
+        return_sign = -sign(ArrayInterface.allowed_getindex(get_condition(integrator, callback, new_t),min_event_idx))
+      end
     end
   else
     new_t = zero(typeof(integrator.t))
     min_event_idx = 1
+    return_sign = 0
   end
 
-  new_t,ArrayInterface.allowed_getindex(prev_sign,min_event_idx),event_occurred,min_event_idx
+  new_t,return_sign,event_occurred,min_event_idx
 end
 
 function apply_callback!(integrator,callback::Union{ContinuousCallback,VectorContinuousCallback},cb_time,prev_sign,event_idx)
