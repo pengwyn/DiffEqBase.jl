@@ -1,6 +1,7 @@
 # Necessary to have initialize set u_modified to false if all don't do anything
 # otherwise unnecessary save
 INITIALIZE_DEFAULT(cb,u,t,integrator) = u_modified!(integrator, false)
+using AutoParameters
 
 
 """
@@ -71,59 +72,31 @@ Contains a single callback whose `condition` is a continuous function. The callb
   if the starting condition is less than the tolerance from zero, then no root will be detected.
   This is to stop repeat events happening just after a previously rootfound event.
 """
-struct ContinuousCallback{F1,F2,F3,F4,T,T2,I,R} <: AbstractContinuousCallback
-  condition::F1
-  affect!::F2
-  affect_neg!::F3
-  initialize::F4
-  idxs::I
-  rootfind::Bool
-  interp_points::Int
+@AutoParm struct ContinuousCallback <: AbstractContinuousCallback
+  condition::AUTO
+  affect!::AUTO
+  affect_neg!::AUTO = affect!
+  initialize::AUTO = INITIALIZE_DEFAULT
+  idxs::AUTO = nothing
+  rootfind::Bool = true
+  interp_points::Int = 10
   save_positions::BitArray{1}
-  dtrelax::R
-  abstol::T
-  reltol::T2
-  ContinuousCallback(condition::F1,affect!::F2,affect_neg!::F3,
-                     initialize::F4,idxs::I,rootfind,
-                     interp_points,save_positions,dtrelax::R,abstol::T,reltol::T2) where {F1,F2,F3,F4,T,T2,I,R} =
-                       new{F1,F2,F3,F4,T,T2,I,R}(condition,
-                                               affect!,affect_neg!,
-                                               initialize,idxs,rootfind,interp_points,
-                                               BitArray(collect(save_positions)),
-                                               dtrelax,abstol,reltol)
+  dtrelax::AUTO = 1
+  t_abstol::AUTO = 10eps()
+  t_reltol::AUTO = 0
+  f_abstol::AUTO = 10eps()
+  f_reltol::AUTO = 0
 end
 
-ContinuousCallback(condition,affect!,affect_neg!;
-                   initialize = INITIALIZE_DEFAULT,
-                   idxs = nothing,
-                   rootfind=true,
-                   save_positions=(true,true),
-                   interp_points=10,
-                   dtrelax=1,
-                   abstol=10eps(),reltol=0) = ContinuousCallback(
-                              condition,affect!,affect_neg!,initialize,
-                              idxs,
-                              rootfind,interp_points,
-                              save_positions,
-                              dtrelax,abstol,reltol)
-
-function ContinuousCallback(condition,affect!;
-                   initialize = INITIALIZE_DEFAULT,
-                   idxs = nothing,
-                   rootfind=true,
-                   save_positions=(true,true),
-                   affect_neg! = affect!,
-                   interp_points=10,
-                   dtrelax=1,
-                   abstol=10eps(),reltol=0)
-
- ContinuousCallback(
-            condition,affect!,affect_neg!,initialize,idxs,
-            rootfind,interp_points,
-            collect(save_positions),
-            dtrelax,abstol,reltol)
-
+function ContinuousCallback(condition,affect!,affect_neg!; save_positions=(true,true), kwds...)
+    # Special case as need to convert save_positions from tuple
+    ContinuousCallback(; condition, affect!, affect_neg!,
+                       save_positions = BitArray(collect(save_positions)),
+                       kwds...)
 end
+
+ContinuousCallback(condition,affect!; affect_neg! = affect!, kwds...) =
+    ContinuousCallback(condition,affect!,affect_neg! ; kwds...)
 
 """
 ```julia
@@ -162,62 +135,32 @@ multiple events.
 
 Rest of the arguments have the same meaning as in [`ContinuousCallback`](@ref).
 """
-struct VectorContinuousCallback{F1,F2,F3,F4,T,T2,I,R} <: AbstractContinuousCallback
-  condition::F1
-  affect!::F2
-  affect_neg!::F3
+@AutoParm struct VectorContinuousCallback <: AbstractContinuousCallback
+  condition::AUTO
+  affect!::AUTO
+  affect_neg!::AUTO
   len::Int
-  initialize::F4
-  idxs::I
-  rootfind::Bool
-  interp_points::Int
+  initialize::AUTO = INITIALIZE_DEFAULT
+  idxs::AUTO = nothing
+  rootfind::Bool = true
+  interp_points::Int = 10
   save_positions::BitArray{1}
-  dtrelax::R
-  abstol::T
-  reltol::T2
-  VectorContinuousCallback(condition::F1,affect!::F2,affect_neg!::F3,len::Int,
-                           initialize::F4,idxs::I,rootfind,
-                           interp_points,save_positions,dtrelax::R,
-                           abstol::T,reltol::T2) where {F1,F2,F3,F4,T,T2,I,R} =
-                       new{F1,F2,F3,F4,T,T2,I,R}(condition,
-                                               affect!,affect_neg!,len,
-                                               initialize,idxs,rootfind,interp_points,
-                                               BitArray(collect(save_positions)),
-                                               dtrelax,abstol,reltol)
+  dtrelax::AUTO = 1
+  t_abstol::AUTO = 10eps()
+  t_reltol::AUTO = 0
+  f_abstol::AUTO = 10eps()
+  f_reltol::AUTO = 0
 end
 
-VectorContinuousCallback(condition,affect!,affect_neg!,len;
-                         initialize = INITIALIZE_DEFAULT,
-                         idxs = nothing,
-                         rootfind=true,
-                         save_positions=(true,true),
-                         interp_points=10,
-                         dtrelax=1,
-                         abstol=10eps(),reltol=0) = VectorContinuousCallback(
-                              condition,affect!,affect_neg!,len,
-                              initialize,
-                              idxs,
-                              rootfind,interp_points,
-                              save_positions,dtrelax,
-                              abstol,reltol)
-
-function VectorContinuousCallback(condition,affect!,len;
-                   initialize = INITIALIZE_DEFAULT,
-                   idxs = nothing,
-                   rootfind=true,
-                   save_positions=(true,true),
-                   affect_neg! = affect!,
-                   interp_points=10,
-                   dtrelax=1,
-                   abstol=10eps(),reltol=0)
-
- VectorContinuousCallback(
-            condition,affect!,affect_neg!,len,initialize,idxs,
-            rootfind,interp_points,
-            collect(save_positions),
-            dtrelax,abstol,reltol)
-
+function VectorContinuousCallback(condition,affect!,affect_neg!,len; save_positions=(true,true), kwds...)
+    # Special case as need to convert save_positions from tuple
+    VectorContinuousCallback( ; condition,affect!,affect_neg!,len,
+                              save_positions = BitArray(collect(save_positions)),
+                              kwds...)
 end
+
+VectorContinuousCallback(condition,affect!,len; affect_neg! = affect!, kwds...) =
+    VectorContinuousCallback(condition,affect!,affect_neg!,len ; kwds...)
 
 """
 ```julia
@@ -586,12 +529,15 @@ end
 # rough implementation, needs multiple type handling
 # always ensures that if r = bisection(f, (x0, x1))
 # then either f(nextfloat(r)) == 0 or f(nextfloat(r)) * f(r) < 0
-function bisection(f, tup, t_forward::Bool ; maxiters=1000)
+function bisection(f, tup, t_forward::Bool, t_abstol, t_reltol, f_abstol, f_reltol; maxiters=1000)
   x0, x1 = tup
   fx0x1 = f(x0) * f(x1)
   fzero = zero(fx0x1)
   (fx0x1 >= fzero) && error("Non bracketing interval passed in bisection method. Please report the error in DiffEqBase.")
   prevfloat_tdir(t) = t_forward ? prevfloat(t) : nextfloat(t)
+  t_tol = t_abstol + t_reltol*abs(x1 - x0)
+  f_tol = f_abstol + f_reltol*abs(fx1 - fx0)
+  zero_check(f,left,right) = abs(f) < f_tol && abs(right-left) < t_tol
   left = x0
   right = x1
   iter = 0
@@ -601,7 +547,7 @@ function bisection(f, tup, t_forward::Bool ; maxiters=1000)
     f(left) * f(right) >= fzero && error("Unexpected values in bisection. Please report the error in DiffEqBase.")
     mid = (left + right) / 2
     y = f(mid)
-    if iszero(y)
+    if zero_check(y, left, right)
       # we are in the region of zero, inner loop
       right = mid
       while true
@@ -670,7 +616,7 @@ function find_callback_time(integrator,callback::ContinuousCallback,counter)
             end
             iter == 12 && error("Double callback crossing floating pointer reducer errored. Report this issue.")
           end
-          Θ = bisection(zero_func, (bottom_t, top_t), isone(integrator.tdir))
+          Θ = bisection(zero_func, (bottom_t, top_t), isone(integrator.tdir), callback.t_abstol, callback.t_reltol, callback.f_abstol, callback.f_reltol)
           integrator.last_event_error = ODE_DEFAULT_NORM(zero_func(Θ), Θ)
         end
         #Θ = prevfloat(...)
@@ -738,7 +684,7 @@ function find_callback_time(integrator,callback::VectorContinuousCallback,counte
               end
               iter == 12 && error("Double callback crossing floating pointer reducer errored. Report this issue.")
             end
-            Θ = bisection(zero_func, (bottom_t,top_t), isone(integrator.tdir))
+            Θ = bisection(zero_func, (bottom_t,top_t), isone(integrator.tdir), callback.t_abstol, callback.t_reltol, callback.f_abstol, callback.f_reltol)
             if integrator.tdir * Θ < integrator.tdir * min_t
               integrator.last_event_error = ODE_DEFAULT_NORM(zero_func(Θ), Θ)
             end
